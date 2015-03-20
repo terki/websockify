@@ -9,7 +9,7 @@
 //     npm install ws optimist policyfile
 
 
-var argv = require('optimist').argv,
+var argv = require('optimist').string('openproxy').argv,
     net = require('net'),
     http = require('http'),
     https = require('https'),
@@ -22,21 +22,47 @@ var argv = require('optimist').argv,
     WebSocketServer = require('ws').Server,
 
     webServer, wsServer,
-    source_host, source_port, target_host, target_port,
+    source_host, source_port, target_host, target_port, openproxy,
     web_path = null;
 
 
 // Handle new WebSocket client
 new_client = function(client) {
     var clientAddr = client._socket.remoteAddress, log;
-    console.log(client.upgradeReq.url);
-    log = function (msg) {
-        console.log(' ' + clientAddr + ': '+ msg);
-    };
+    var url = client.upgradeReq.url;
+    var urlregex = /^\/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}),(\d{1,5})/;
+    var client_target_host;
+    var client_target_port;
+
+    console.log(url);
+    var urlparams = urlregex.exec(url);
+
+    if (openproxy) {
+        if (!urlparams || urlparams[1].indexOf(openproxy)!==0) {
+            console.log('Invalid url parameters, expected "'+openproxy+'.x.x,port" but saw "%s"',url);
+            client.close();
+            return;
+        }
+        else {
+            client_target_host=urlparams[1];
+            client_target_port=urlparams[2];
+            log = function (msg) {
+                console.log(' ' + clientAddr + '->' + client_target_host + ':' + client_target_port + ': '+ msg);
+            };
+        }
+    }
+    else {
+        client_target_host=target_host;
+        client_target_port=target_port;
+        log = function (msg) {
+            console.log(' ' + clientAddr + ': '+ msg);
+        };
+    }
+
     log('WebSocket connection');
     log('Version ' + client.protocolVersion + ', subprotocol: ' + client.protocol);
 
-    var target = net.createConnection(target_port,target_host, function() {
+    var target = net.createConnection(client_target_port,client_target_host, function() {
         log('connected to target');
     });
     target.on('data', function(data) {
@@ -138,7 +164,7 @@ selectProtocol = function(protocols, callback) {
 // parse source and target arguments into parts
 try {
     source_arg = argv._[0].toString();
-    target_arg = argv._[1].toString();
+    target_arg = argv._[1] && argv._[1].toString();
 
     var idx;
     idx = source_arg.indexOf(":");
@@ -150,24 +176,42 @@ try {
         source_port = parseInt(source_arg, 10);
     }
 
-    idx = target_arg.indexOf(":");
-    if (idx < 0) {
-        throw("target must be host:port");
-    }
-    target_host = target_arg.slice(0, idx);
-    target_port = parseInt(target_arg.slice(idx+1), 10);
+    if (target_arg) {
 
-    if (isNaN(source_port) || isNaN(target_port)) {
+        idx = target_arg.indexOf(":");
+        if (idx < 0) {
+            throw("target must be host:port");
+        }
+        target_host = target_arg.slice(0, idx);
+        target_port = parseInt(target_arg.slice(idx+1), 10);
+
+    }
+    if (isNaN(source_port) || target_arg && isNaN(target_port)) {
         throw("illegal port");
     }
+    openproxy = argv.openproxy;
+    if (!target_arg && !openproxy) {
+        throw("Must supply either openproxy or target_addr:target_port");
+    }
+    if (target_arg && openproxy) {
+        throw("Target and open proxy combined not supported");
+    }
+    if (openproxy && !/^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(openproxy)) {
+        throw("Not two ip octets (ex 192.168): \""+openproxy+"\"");
+    }
 } catch(e) {
-    console.error("websockify.js [--web web_dir] [--cert cert.pem [--key key.pem]] [source_addr:]source_port target_addr:target_port");
+    console.error("websockify.js [--web web_dir] [--cert cert.pem [--key key.pem]] [--openproxy 192.168] [source_addr:]source_port [target_addr:target_port]");
     process.exit(2);
 }
 
 console.log("WebSocket settings: ");
-console.log("    - proxying from " + source_host + ":" + source_port +
-            " to " + target_host + ":" + target_port);
+console.log("    - proxying from " + source_host + ":" + source_port);
+if (openproxy) {
+    console.log("    - Open proxy to net: " + openproxy);
+}
+else if (target_arg) {
+    console.log("    - to " + target_host + ":" + target_port);
+}
 if (argv.web) {
     console.log("    - Web server active. Serving: " + argv.web);
 }
