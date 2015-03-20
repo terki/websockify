@@ -20,9 +20,11 @@ var argv = require('optimist').string('openproxy').argv,
 
     Buffer = require('buffer').Buffer,
     WebSocketServer = require('ws').Server,
+    serveStatic = require('serve-static'),
+    finalhandler = require('finalhandler'),
 
     webServer, wsServer,
-    source_host, source_port, target_host, target_port, openproxy,
+    source_host, source_port, target_host, target_port, openproxy, serve, 
     web_path = null;
 
 
@@ -113,40 +115,17 @@ http_error = function (response, code, msg) {
     response.write(msg + "\n");
     response.end();
     return;
-}
+};
 
 // Process an HTTP static file request
 http_request = function (request, response) {
-//    console.log("pathname: " + url.parse(req.url).pathname);
-//    res.writeHead(200, {'Content-Type': 'text/plain'});
-//    res.end('okay');
 
-    if (! argv.web) {
+    if (!argv.web || !serve) {
         return http_error(response, 403, "403 Permission Denied");
     }
+    var done = finalhandler(request, response);
+    serve(request,response,done);
 
-    var uri = url.parse(request.url).pathname
-        , filename = path.join(argv.web, uri);
-    
-    fs.exists(filename, function(exists) {
-        if(!exists) {
-            return http_error(response, 404, "404 Not Found");
-        }
-
-        if (fs.statSync(filename).isDirectory()) {
-            filename += '/index.html';
-        }
-
-        fs.readFile(filename, "binary", function(err, file) {
-            if(err) {
-                return http_error(response, 500, err);
-            }
-
-            response.writeHead(200);
-            response.write(file, "binary");
-            response.end();
-        });
-    });
 };
 
 // Select 'binary' or 'base64' subprotocol, preferring 'binary'
@@ -213,6 +192,7 @@ else if (target_arg) {
     console.log("    - to " + target_host + ":" + target_port);
 }
 if (argv.web) {
+    serve = serveStatic(argv.web, {'index': ['index.html', 'index.htm']});
     console.log("    - Web server active. Serving: " + argv.web);
 }
 
