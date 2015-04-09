@@ -9,7 +9,7 @@
 //     npm install ws optimist policyfile
 
 
-var argv = require('optimist').string('openproxy').argv,
+var argv = require('optimist').string('openproxy').parse(process.env.args.split(',')||process.argv.slice(2)),
     net = require('net'),
     http = require('http'),
     https = require('https'),
@@ -22,9 +22,10 @@ var argv = require('optimist').string('openproxy').argv,
     WebSocketServer = require('ws').Server,
     serveStatic = require('serve-static'),
     finalhandler = require('finalhandler'),
+    moment = require('moment'),
 
     webServer, wsServer,
-    source_host, source_port, target_host, target_port, openproxy, serve, 
+    source_host, source_port, target_host, target_port, openproxy, serve,
     web_path = null;
 
 
@@ -36,7 +37,7 @@ new_client = function(client) {
     var client_target_host;
     var client_target_port;
 
-    console.log(url);
+    console.log(moment().format()+' ' + clientAddr + ' ' + url);
     var urlparams = urlregex.exec(url);
 
     if (openproxy) {
@@ -49,7 +50,7 @@ new_client = function(client) {
             client_target_host=urlparams[1];
             client_target_port=urlparams[2];
             log = function (msg) {
-                console.log(' ' + clientAddr + '->' + client_target_host + ':' + client_target_port + ': '+ msg);
+                console.log(moment().format()+' ' + clientAddr + '->' + client_target_host + ':' + client_target_port + ': '+ msg);
             };
         }
     }
@@ -57,7 +58,7 @@ new_client = function(client) {
         client_target_host=target_host;
         client_target_port=target_port;
         log = function (msg) {
-            console.log(' ' + clientAddr + ': '+ msg);
+            console.log(moment().format()+' ' + clientAddr + ': '+ msg);
         };
     }
 

@@ -21,6 +21,7 @@
   "dependencies": {
     "base64": "latest",
     "finalhandler": "^0.3.4",
+    "moment": "^2.10.0",
     "optimist": "latest",
     "policyfile": "latest",
     "serve-static": "^1.9.2",
