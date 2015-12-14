@@ -9,7 +9,7 @@
 //     npm install ws optimist policyfile
 
 
-var argv = require('optimist').string('openproxy').parse(process.env.args.split(',')||process.argv.slice(2)),
+var argv = require('optimist').string('openproxy').parse(process.env.args && process.env.args.split(',')||process.argv.slice(2)),
     net = require('net'),
     http = require('http'),
     https = require('https'),
@@ -23,9 +23,11 @@ var argv = require('optimist').string('openproxy').parse(process.env.args.split(
     serveStatic = require('serve-static'),
     finalhandler = require('finalhandler'),
     moment = require('moment'),
+    jwt = require('jsonwebtoken'),
+    querystring = require('querystring'),
 
     webServer, wsServer,
-    source_host, source_port, target_host, target_port, openproxy, serve,
+    source_host, source_port, target_host, target_port, openproxy, serve, jwtsecret
     web_path = null;
 
 
@@ -38,8 +40,25 @@ new_client = function(client) {
     var client_target_port;
 
     console.log(moment().format()+' ' + clientAddr + ' ' + url);
-    var urlparams = urlregex.exec(url);
+    var params = querystring.parse(url);
 
+    if (jwtsecret) {
+        if (!params.jwt) {
+            console.log('Missing jwt parameter in request, saw %s',url);
+            client.close();
+            return;
+        }
+        try {
+            jwt.verify(params.jwt, jwtsecret, { maxAge: '15m' });
+        }
+        catch (err) {
+            console.log('Invalid jwt parameter in request: '+err);
+            client.close();
+            return;
+        }
+    }
+
+    var urlparams = urlregex.exec(url);    
     if (openproxy) {
         if (!urlparams || urlparams[1].indexOf(openproxy)!==0) {
             console.log('Invalid url parameters, expected "'+openproxy+'.x.x,port" but saw "%s"',url);
@@ -179,8 +198,9 @@ try {
     if (openproxy && !/^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(openproxy)) {
         throw("Not two ip octets (ex 192.168): \""+openproxy+"\"");
     }
+    jwtsecret = argv.jwtsecret;
 } catch(e) {
-    console.error("websockify.js [--web web_dir] [--cert cert.pem [--key key.pem]] [--openproxy 192.168] [source_addr:]source_port [target_addr:target_port]");
+    console.error("websockify.js [--web web_dir] [--cert cert.pem [--key key.pem]] [--openproxy 192.168] [--jwtsecret SECRET] [source_addr:]source_port [target_addr:target_port]");
     process.exit(2);
 }
 
@@ -195,6 +215,9 @@ else if (target_arg) {
 if (argv.web) {
     serve = serveStatic(argv.web, {'index': ['index.html', 'index.htm']});
     console.log("    - Web server active. Serving: " + argv.web);
+}
+if (jwtsecret) {
+    console.log("    - Requiring JWT signed token with secret "+jwtsecret);
 }
 
 if (argv.cert) {
